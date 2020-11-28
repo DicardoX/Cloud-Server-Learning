@@ -22,3 +22,11 @@
  - 进入配置文件`/etc/resolv.conf`，添加相同的`nameserver [Your DNS address]`
  
  - 重启`reboot`
+
+--------------------
+
+## Mac连接云主机
+
+[参考链接：Mac上传文件到Linux服务器](https://www.cnblogs.com/faunjoe88/p/8094068.html)
+
+&emsp; **注意**！要使用浮动IP而非内网IP。
