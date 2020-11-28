@@ -16,7 +16,7 @@
  
  ```
  nameservers:
-     address = [[Your DNS address]]
+     addresses : [[Your DNS address]]
  ```
  
  - 进入配置文件`/etc/resolv.conf`，添加相同的`nameserver [Your DNS address]`
