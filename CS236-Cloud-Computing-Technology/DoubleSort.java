@@ -1,6 +1,7 @@
-import java.io.IOException;
-import java.util.*;
-
+import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
+import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
+import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
+import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IntWritable;
@@ -10,47 +11,14 @@ import org.apache.hadoop.io.WritableComparator;
 import org.apache.hadoop.mapreduce.Job;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
-import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
-import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
-import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.mapreduce.lib.partition.HashPartitioner;
+import java.io.IOException;
+import java.util.*;
+
 public class DoubleSort {
 
-	public static class DoubleSortMapper extends Mapper<Object, Text, Text, Text>{
-
-		private Text outkey = new Text();
-		private Text outval = new Text();
-
-		public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
-			
-			StringTokenizer st = new StringTokenizer(value.toString(), "\":-, ");
-			ArrayList<String> tokens = new ArrayList<String>();
-			while(st.hasMoreTokens()){
-				tokens.add(st.nextToken());
-			}
-			/* e.g. if value = "\"2013-01-01 00:20:00\",48.2", then 
-			* tokens = [2013,01,01,00,20,00,48.2] length = 7
-			*/
-			if(tokens.size() >= 7) {
-				outkey.set(tokens.get(1)+ "," + tokens.get(2) + "," + tokens.get(6));
-				outval.set(value.toString());
-				context.write(outkey, outval);
-			}
-		}
-	}
-
-	public static class DoubleSortPartitioner extends HashPartitioner<Text, Text> {
-		@Override
-		public int getPartition(Text key, Text value, int numPartitions) {
-			String[] tokens = key.toString().split(",");
-			String dateKey = tokens[0] + tokens[1];
-			return (dateKey.hashCode() & Integer.MAX_VALUE) % numPartitions;
-		}
-	}
-
-	public static class DoubleSortCompartor extends WritableComparator {
-		DoubleSortCompartor() {
+	public static class MyCompartor extends WritableComparator {
+		MyCompartor() {
 			super(Text.class, true);
 		}
 
@@ -69,13 +37,13 @@ public class DoubleSort {
 				return Integer.compare(amonth, bmonth);
 			else if (adate != bdate)
 				return Integer.compare(adate, bdate);
-			else // switch a,b because temperature is in ascending order
-				return Float.compare(btemperature, atemperature);
+			else
+				return Float.compare(btemperature, atemperature);	 // Switch a,b (ascending order)
 		}
 	}
 
-	public static class DoubleSortGrouper extends WritableComparator {
-		DoubleSortGrouper() {
+	public static class MyGrouper extends WritableComparator {
+		MyGrouper() {
 			super(Text.class, true);
 		}
 
@@ -95,33 +63,61 @@ public class DoubleSort {
 		}
 	}
 
-	public static class DoubleSortReducer extends Reducer<Text, Text, Text, Text> {
+	public static class MyMapper extends Mapper<Object, Text, Text, Text>{
+
+		private Text outKey = new Text();
+		private Text outVal = new Text();
+
+		public void map(Object key, Text value, Context context) throws IOException, InterruptedException {
+			
+			StringTokenizer strtoken = new StringTokenizer(value.toString(), "\":-, ");		// Input cut
+			ArrayList<String> tokens = new ArrayList<String>();								// Token result
+			while(st.hasMoreTokens()){
+				tokens.add(strtoken.nextToken());
+			}
+			// value = "\"2013-01-01 00:20:00\",48.2" -> tokens = [2013,01,01,00,20,00,48.2]
+			if(tokens.size() >= 7) {
+				outKey.set(tokens.get(1)+ "," + tokens.get(2) + "," + tokens.get(6));		// Message needed
+				outVal.set(value.toString());												// OUtput value (initial message)
+				context.write(outKey, outVal);												// Write into context
+			}
+		}
+	}
+
+	public static class MyPartitioner extends HashPartitioner<Text, Text> {
 		@Override
-		public void reduce(Text key, Iterable<Text> values, Context context)
-			throws IOException, InterruptedException {
+		public int getPartition(Text key, Text value, int numPartitions) {
+			String[] tokens = key.toString().split(",");
+			String dateKey = tokens[0] + tokens[1];
+			return (dateKey.hashCode() & Integer.MAX_VALUE) % numPartitions;
+		}
+	}
+
+	public static class MyReducer extends Reducer<Text, Text, Text, Text> {
+		@Override
+		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
 			Text date = new Text();
-			Text tem = new Text();
+			Text temperature = new Text();
 
 			for (Text val : values) {
 				String[] tokens = key.toString().split(",");
 				date.set(String.valueOf(Integer.parseInt(tokens[0])) + "/" + String.valueOf(Integer.parseInt(tokens[1])));
-				tem.set(tem.toString() + " " +  tokens[2]);
+				temperature.set(temperature.toString() + " " +  tokens[2]);
 			} 
-			context.write(date, tem);
-
+			context.write(date, temperature);
 		}
 	}
 
 	public static void main(String[] args) throws Exception {
         Configuration conf = new Configuration();
 		Job job = Job.getInstance(conf, "Double Sort");
-	
+		
 		job.setJarByClass(DoubleSort.class);
-		job.setMapperClass(DoubleSortMapper.class);
-		job.setPartitionerClass(DoubleSortPartitioner.class);
-		job.setSortComparatorClass(DoubleSortCompartor.class);
-		job.setGroupingComparatorClass(DoubleSortGrouper.class);
-		job.setReducerClass(DoubleSortReducer.class);
+		job.setMapperClass(MyMapper.class);
+		job.setPartitionerClass(MyPartitioner.class);
+		job.setSortComparatorClass(MyCompartor.class);
+		job.setGroupingComparatorClass(MyGrouper.class);
+		job.setReducerClass(MyReducer.class);
 		
 		job.setMapOutputKeyClass(Text.class);
 		job.setMapOutputValueClass(Text.class);
